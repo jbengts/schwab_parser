@@ -5,198 +5,203 @@ import datetime
 import time
 import os
 from datetime import date
+from dateutil.relativedelta import relativedelta
+
+# Config options
+class Config:
+    verbose = True
 
 class ShareSell:
-    def __init__(self, t, q, bd, bp, sd, sp):
-        self.sell_type = t
-        self.sell_quantity = float(q)
-        self.sell_date = datetime.datetime.strptime(sd, '%m/%d/%Y').date()
-        self.sell_price = float(sp.replace("$", ""))
-        self.sell_rate = 0.0
-        self.buy_date = datetime.datetime.strptime(bd, '%m/%d/%Y').date()
-        self.buy_price = float(bp.replace("$", ""))
-        self.buy_rate = 0.0
+    def __init__(self, share_type, quantity, buy_date, buy_price, sell_date, sell_price, espp_discount_price):
+        self.share_type = share_type
+        self.sell_quantity = float(quantity)
+        self.sell_date = datetime.datetime.strptime(sell_date, '%m/%d/%Y').date()
+        self.sell_price = float(sell_price.replace("$", ""))
+        self.sell_rate = None
+        self.buy_date = datetime.datetime.strptime(buy_date, '%m/%d/%Y').date()
+        self.buy_price = float(buy_price.replace("$", ""))
+        self.buy_rate = None
+        self.sell_date_low = None
+        self.sell_date_high = None
+        self.buy_date_low = None
+        self.buy_date_high = None
+        if espp_discount_price is not None:
+            self.espp_discount_price = float(espp_discount_price.replace("$", ""))
+        else:
+            self.espp_discount_price = None
+
     def __repr__(self):
-        return f"<Test a:{self.sell_price}>"
+        return f"<ShareSell sell_price={self.sell_price}>"
 
     def __str__(self):
         return f"Sold: {self.sell_date} Qnty: {self.sell_quantity} Type: \
-        {self.sell_type} \
-        Sell price: {self.sell_price} Sell rate:{self.sell_rate} \
+        {self.share_type} \
+        Sell price: {self.sell_price} Sell rate:{self.sell_rate:.2f} \
         Buy date: {self.buy_date} Buy price: {self.buy_price} \
-        Buy rate: {self.buy_rate}"
+        Buy rate: {self.buy_rate:.2f}"
     
-    def total(self):
-        f"Sold: {self.sell_date} Qnty: {self.sell_quantity} Type: \
-        {self.sell_type} \
-        Sell price: {self.sell_price} Sell rate:{self.sell_rate} \
-        Buy date: {self.buy_date} Buy price: {self.buy_price} \
-        Buy rate: {self.buy_rate}"
-        cleaned_price_str = price_str.replace("$", "")
-        # Convert the string to a float
-        price_float = float(cleaned_price_str)
-        self.sell_rate
-  
-def fetch_and_parse_json_from_url(fromd, tod):
+# Verbose print wrapper
+def sprint(*args, **kwargs):
+    if Config.verbose:
+        print(*args, **kwargs)
+
+def print_table(shares):
+    # Skriv ut rubriker
+    print(f"{'Sell Date':<12}{'Type':<10}{'Quantity':<10}{'Sell Price':<12}{'Sell Rate':<12}{'Sell Rate Date':<25}{'Buy Date':<12}{'Buy Price':<12}{'Buy Rate':<12}{'Buy Rate Date':<25}{'ESPP Gain':<12}{'Profit':<12}{'Tax':<12}")
+    print("-" * 180)
+
+    # Iterera över objekten och skriv ut deras attribut
+    total_tax = 0.0
+    total_profit = 0.0
+    prev_sell_date = None
+    for share in shares:
+        sell_date = share.sell_date.strftime('%Y-%m-%d')
+        buy_date = share.buy_date.strftime('%Y-%m-%d')
+        if prev_sell_date is not None and prev_sell_date != sell_date:
+            print("-" * 180)
+        if share.sell_date_low == share.sell_date_high:
+            sell_rate_date = share.sell_date_low.strftime('%Y-%m-%d')
+        else:
+            sell_rate_date = share.sell_date_low.strftime('%Y-%m-%d') + share.sell_date_high.strftime('%Y-%m-%d')
+        if share.buy_date_low == share.buy_date_high:
+            buy_rate_date = share.buy_date_low.strftime('%Y-%m-%d')
+        else:
+            buy_rate_date = share.buy_date_low.strftime('%Y-%m-%d') + " - " + share.buy_date_high.strftime('%Y-%m-%d')
+        if share.espp_discount_price is not None:
+            espp_gain = (share.buy_price - share.espp_discount_price) * share.sell_quantity * share.sell_rate
+        else:
+            espp_gain = 0.0
+        profit = (share.sell_rate * share.sell_price - share.buy_rate * share.buy_price) * share.sell_quantity
+        tax = profit * 0.3
+        total_tax += tax
+        total_profit += profit
+        prev_sell_date = sell_date
+        print(f"{sell_date:<12}{share.share_type:<10}{share.sell_quantity:<10.2f}{share.sell_price:<12.2f}{share.sell_rate:<12.2f}{sell_rate_date:<25}{buy_date:<12}{share.buy_price:<12.2f}{share.buy_rate:<12.2f}{buy_rate_date:<25}{espp_gain:<12.2f}{profit:<12.2f}{tax:<12.2f}")
+    print("-" * 180)
+    print(f"Total profit (SEK): {total_profit:.2f}")
+    print(f"Total tax (SEK):    {total_tax:.2f}")
+
+def get_valid_value(data, primary_key, fallback_key):
+    value = data.get(primary_key)
+    return value if value not in (None, "") else data.get(fallback_key)
+
+def get_rates1(shares):
+    oldest, newest = get_oldes_and_newest_dates(shares)
+    oldest = oldest - relativedelta(months=1)
+    newest = newest + relativedelta(months=1)
+    return get_rates(oldest, newest)
+
+def get_rates(from_date, to_date):
     try:
         if os.path.exists("rates.json"):
             with open("rates.json", 'r', encoding='utf-8') as file:
                 data = json.load(file)
             return data
         else:
-            f = fromd.strftime("%Y-%m-%d")
-            t = tod.strftime("%Y-%m-%d")
-            url = f"https://api.riksbank.se/swea/v1/Observations/sekusdpmi/{f}/{t}"
+            from_str = from_date.strftime("%Y-%m-%d")
+            to_str = to_date.strftime("%Y-%m-%d")
+            url = f"https://api.riksbank.se/swea/v1/Observations/sekusdpmi/{from_str}/{to_str}"
             response = requests.get(url)
-            print(f"response {url} {response}")
             response.raise_for_status()
             data = response.json()
-            print("Data fetched from URL:")
             with open("rates.json", "w") as file:
                 json.dump(data, file, indent=4) 
-                # print(json.dumps(data, indent=4, ensure_ascii=False))
             return data
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching data: {e}")
-    except json.JSONDecodeError as e:
-        print(f"JSON decoding failed: {e}")
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        print(f"Error loading JSON data: {e}")
+        return None
 
         # https://api.riksbank.se/swea/v1/Observations/Latest/sekusdpmi
         # https://api.riksbank.se/swea/v1/Observations/sekusdpmi/from/to
-def parse_json_from_file(file_path):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        print("Data read from file:")
-        shares_sold = get_transactions_list(data)
-        for share in shares_sold:
-            print(share)
-        oldest, newest = get_oldes_and_newest_dates(shares_sold)
-        rates = fetch_and_parse_json_from_url(oldest, newest)
-        shares = update_rates(rates, shares_sold)
-        for share in shares:
-            print(share)
-        calculate_result(shares)
-        # find_in_json(acc, data, "Transactions")
-        # print(json.dumps(res, indent=4, ensure_ascii=False))
-        return data
-    except FileNotFoundError:
-        print(f"File {file_path} not found.")
-    except json.JSONDecodeError as e:
-        print(f"JSON decoding failed: {e}")
-
-def find_in_json(obj, target):
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if key == target:
-                return value
-            result = find_in_json(value, target)
-            if result:
-                return result
-    elif isinstance(obj, list):
-        for item in obj:
-            result = find_in_json(item, target)
-            if result:
-                return result
-    return None
-
-def get_sales_entries(trans_list):
-    acc = []
-    for item in trans_list:
-        for key, value in item.items():
-            if key == "Action" and value == "Sale":
-                sales = get_sales_object(item)
-                acc.extend(sales)
-            if key == "Action" and value == "Quick Sale":
-                sales = get_sales_object(item)
-                acc.extend(sales)
-    return acc
 
 def get_oldes_and_newest_dates(shares):
     oldest = date.today()
-    newest = datetime.datetime.strptime("11/11/2022", '%m/%d/%Y').date()
+    newest = datetime.datetime.strptime("11/11/2011", '%m/%d/%Y').date()
     for share in shares:
         if share.sell_date > newest:
             newest = share.sell_date
         if share.buy_date < oldest:
             oldest = share.buy_date
-            
-    print(f"oldest: {oldest}")
-    print(f"newest: {newest}")
     return (oldest, newest)
 
-def calculate_result(shares):
-    profit = 0.0
-    sold = 0.0
+def update_shares(shares, rates):
     for share in shares:
-        sold = share.sell_quantity * (share.sell_price * share.sell_rate) + sold
-        profit = share.sell_quantity * (share.sell_price * share.sell_rate - share.buy_price * share.buy_rate) + profit
-    print(f"sold: {sold}")
-    print(f"profit: {profit}")
-    tax = 0.3 * profit
-    print(f"tax: {tax}")
-    
-def update_rates(rates, shares):
-    prev_rated = None
-    for rate in rates:
-        datestr = rate["date"]
-        rated = datetime.datetime.strptime(datestr, '%Y-%m-%d').date()
-        value = rate["value"]
-        for share in shares:
-            print(f"share: {share}")
-            if share.sell_date == rated:
-                print(f"sell date is the date of the rate...")
-                share.sell_rate = float(value)
-            elif prev_rated is not None and share.sell_date > prev_rated[0] and share.sell_date < rated:
-                print(f"sell date is after the previous rate and before the next rate")
-                share.sell_rate = (float(prev_rated[1]) + float(value))/2
-            if share.buy_date == rated:
-                print(f"buy date is the date of the rate...")
-                share.buy_rate = float(value)
-            elif share.buy_date < rated and share.buy_rate == 0.0:
-                share.buy_rate = float(value)
-            elif prev_rated is not None and share.buy_date > prev_rated[0] and share.buy_date < rated:
-                print(f"buy date is after the previous rate and before the next rate")
-                share.buy_rate = (float(prev_rated[1]) + float(value))/2
-            else:
-                print(f"hmm: rate is date {rated} and value is {value}")
-                print(f"share bought {share.buy_date}")
-                # print(f"prev rate {prev_rated[0]} {prev_rated[1]}");
-        prev_rated = (rated, value)
+        sell_rate, sell_date_low, sell_date_high, buy_rate, buy_date_low, buy_date_high = get_rate(rates, share.sell_date, share.buy_date)
+        share.sell_rate = sell_rate
+        share.buy_rate = buy_rate
+        share.sell_date_low = sell_date_low
+        share.sell_date_high = sell_date_high
+        share.buy_date_low = buy_date_low
+        share.buy_date_high = buy_date_high
     return shares
 
-def get_sales_object(sale):
-    sell_date = sale["Date"]
-    sell_type = sale["Action"]
-    details = sale["TransactionDetails"]
-    acc = []
-    for detail in details:
-        data = detail["Details"]
-        quantity = data["Shares"]
-        sell_price = data["SalePrice"]
-        buy_price = data["PurchasePrice"]
-        buy_date = data["PurchaseDate"]
-        if not buy_price:
-            buy_price = data["VestFairMarketValue"]
-        if not buy_date:
-            buy_date = data["VestDate"]
-        share_sell = ShareSell(sell_type, quantity, buy_date, buy_price,
-                               sell_date, sell_price)
-        acc.append(share_sell)
-    return acc
+def get_rate(rates, sell_date, buy_date):
+    prev_rate = None
+    sell_rate = None
+    buy_rate = None
+    sell_date_high = None
+    sell_date_low = None
+    buy_date_high = None
+    buy_date_low = None
+    for rate in rates:
+        rate_date = datetime.datetime.strptime(datestr, '%Y-%m-%d').date()
+        datestr = rate["date"]
+        rate_value = rate["value"]            
+        if sell_date == rate_date:
+            sell_rate = float(rate_value)
+            sell_date_low = rate_date
+            sell_date_high = rate_date
+        elif sell_date < rate_date and sell_rate is None:
+            sell_rate =  (float(prev_rate[1]) + float(rate_value)) / 2
+            sell_date_low = prev_rate[0]
+            sell_date_high = rate_date
+        if buy_date == rate_date:
+            buy_rate = float(rate_value)
+            buy_date_low = rate_date
+            buy_date_high = rate_date
+        elif buy_date < rate_date and buy_rate is None:
+            buy_rate =  (float(prev_rate[1]) + float(rate_value)) / 2
+            buy_date_low = prev_rate[0]
+            buy_date_high = rate_date
+        prev_rate = (rate_date, rate_value)
+    return sell_rate, sell_date_low, sell_date_high, buy_rate, buy_date_low, buy_date_high
 
-def get_transactions_list(obj):
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if key == "Transactions":
-                acc = get_sales_entries(value)
-                # print(f"Trans {acc}")
-                return acc
-    elif isinstance(obj, list):
-        for item in obj:
-            result = find_in_json(item)
-            if result:
-                return result
+def get_sold_shares(transactions):
+    sold_shares = []
+    for transaction in transactions:
+        if transaction["Action"] in {"Sale", "Quick Sale"}:
+            sell_date = transaction["Date"]
+            details = transaction["TransactionDetails"]
+            espp_discount_price = None
+            for detail in details:
+                data = detail["Details"]
+                type = data["Type"]
+                quantity = data["Shares"]
+                sell_price = data["SalePrice"]
+                if type == "Div Reinv":
+                    buy_date = data["PurchaseDate"]
+                    buy_price = data["PurchasePrice"]
+                elif type == "RS":
+                    buy_date = data["VestDate"]
+                    buy_price = data["VestFairMarketValue"]
+                elif type == "ESPP":
+                    espp_discount_price = data["PurchasePrice"]
+                    buy_date = data["PurchaseDate"]
+                    buy_price = data["PurchaseFairMarketValue"]
+                sold_shares.append(ShareSell(type, quantity, buy_date, buy_price, sell_date, sell_price, espp_discount_price))
+    return sold_shares
+
+def get_transactions(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if key == "Transactions":
+                    return value
+        return None
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Error loading JSON data: {e}")
     return None
 
 if __name__ == "__main__":
@@ -206,18 +211,37 @@ if __name__ == "__main__":
 
     parser.add_argument("--url", help="The URL to fetch JSON data from.")
     parser.add_argument("--file", help="The file path to read JSON data from.")
-    
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose mode")
     # Parse the arguments
     args = parser.parse_args()
 
-    # Handle URL argument
-    if args.url:
-        fetch_and_parse_json_from_url(args.url)
+    # Set verbose option
+    Config.verbose = args.verbose
+
+    # Get all transactions from JSON file
+    transactions = get_transactions(args.file)
+  
+    # Get sold shares
+    sold_shares = get_sold_shares(transactions)
+
+    # Get exchange rates within the dates of sold shares
+    rates = get_rates1(sold_shares)
+
+    # Update the shares with the correct exchange rate
+    sold_shares = update_shares(sold_shares, rates)
+
+    # Print
+    print_table(sold_shares)
+    # Calculate profit or losses, and eventual taxes
+    # Total sale amount minus total purchase amount.
+    # And 30% taxes on eventual profit.
+    # calculate_and_print_totals(sold_shares)
 
     # Handle file argument
-    if args.file:
-        parse_json_from_file(args.file)
+    # if args.file:
+    #    parse_json_from_file(args.file)
 
     # If neither is provided, print help
+    
     if not args.url and not args.file:
         parser.print_help()
