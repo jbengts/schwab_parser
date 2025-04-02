@@ -47,7 +47,10 @@ def sprint(*args, **kwargs):
 
 def print_table(shares):
     # Skriv ut rubriker
-    print(f"{'Sell Date':<12}{'Type':<10}{'Quantity':<10}{'Sell Price':<12}{'Sell Rate':<12}{'Sell Rate Date':<25}{'Buy Date':<12}{'Buy Price':<12}{'Buy Rate':<12}{'Buy Rate Date':<25}{'ESPP Gain':<12}{'Profit':<12}{'Tax':<12}")
+    print(f"{'Sell Date':<12}{'Type':<10}{'Quantity':<10}\
+        {'Sell Price':<12}{'Sell Rate':<12}{'Sell Rate Date':<25}\
+        {'Buy Date':<12}{'Buy Price':<12}{'Buy Rate':<12}\
+        {'Buy Rate Date':<25}{'ESPP Gain':<12}{'Profit':<12}{'Tax':<12}")
     print("-" * 180)
 
     # Iterera över objekten och skriv ut deras attribut
@@ -133,6 +136,7 @@ def update_shares(shares, rates):
         share.sell_date_high = sell_date_high
         share.buy_date_low = buy_date_low
         share.buy_date_high = buy_date_high
+        print(f"{share}")
     return shares
 
 def get_rate(rates, sell_date, buy_date):
@@ -144,8 +148,7 @@ def get_rate(rates, sell_date, buy_date):
     buy_date_high = None
     buy_date_low = None
     for rate in rates:
-        rate_date = datetime.datetime.strptime(datestr, '%Y-%m-%d').date()
-        datestr = rate["date"]
+        rate_date = datetime.datetime.strptime(rate["date"], '%Y-%m-%d').date()
         rate_value = rate["value"]            
         if sell_date == rate_date:
             sell_rate = float(rate_value)
