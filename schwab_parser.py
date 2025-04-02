@@ -136,7 +136,6 @@ def update_shares(shares, rates):
         share.sell_date_high = sell_date_high
         share.buy_date_low = buy_date_low
         share.buy_date_high = buy_date_high
-        print(f"{share}")
     return shares
 
 def get_rate(rates, sell_date, buy_date):
