@@ -12,7 +12,8 @@ class Config:
     verbose = True
 
 class ShareSell:
-    def __init__(self, share_type, quantity, buy_date, buy_price, sell_date, sell_price, espp_discount_price):
+    def __init__(self, share_type, quantity, buy_date, buy_price, sell_date,
+                 sell_price, espp_discount_price):
         self.share_type = share_type
         self.sell_quantity = float(quantity)
         self.sell_date = datetime.datetime.strptime(sell_date, '%m/%d/%Y').date()
@@ -46,14 +47,12 @@ def sprint(*args, **kwargs):
         print(*args, **kwargs)
 
 def print_table(shares):
-    # Skriv ut rubriker
-    print(f"{'Sell Date':<12}{'Type':<10}{'Quantity':<10}\
-        {'Sell Price':<12}{'Sell Rate':<12}{'Sell Rate Date':<25}\
-        {'Buy Date':<12}{'Buy Price':<12}{'Buy Rate':<12}\
-        {'Buy Rate Date':<25}{'ESPP Gain':<12}{'Profit':<12}{'Tax':<12}")
+    print(f"{'Sell Date':<12}{'Type':<10}{'Quantity':<10}{'Sell Price':<12}"
+          f"{'Sell Rate':<12}{'Sell Rate Date':<25}{'Buy Date':<12}"
+          f"{'Buy Price':<12}{'Buy Rate':<12}{'Buy Rate Date':<25}"
+          f"{'ESPP Gain':<12}{'Profit (SEK)':<14}{'Tax (SEK)':<12}")
     print("-" * 180)
 
-    # Iterera över objekten och skriv ut deras attribut
     total_tax = 0.0
     total_profit = 0.0
     prev_sell_date = None
@@ -79,7 +78,12 @@ def print_table(shares):
         total_tax += tax
         total_profit += profit
         prev_sell_date = sell_date
-        print(f"{sell_date:<12}{share.share_type:<10}{share.sell_quantity:<10.2f}{share.sell_price:<12.2f}{share.sell_rate:<12.2f}{sell_rate_date:<25}{buy_date:<12}{share.buy_price:<12.2f}{share.buy_rate:<12.2f}{buy_rate_date:<25}{espp_gain:<12.2f}{profit:<12.2f}{tax:<12.2f}")
+        print(f"{sell_date:<12}{share.share_type:<10}"
+              f"{share.sell_quantity:<10.2f}{share.sell_price:<12.2f}"
+              f"{share.sell_rate:<12.2f}{sell_rate_date:<25}{buy_date:<12}"
+              f"{share.buy_price:<12.2f}{share.buy_rate:<12.2f}"
+              f"{buy_rate_date:<25}{espp_gain:<12.2f}{profit:<14.2f}"
+              f"{tax:<12.2f}")
     print("-" * 180)
     print(f"Total profit (SEK): {total_profit:.2f}")
     print(f"Total tax (SEK):    {total_tax:.2f}")
@@ -88,16 +92,16 @@ def get_valid_value(data, primary_key, fallback_key):
     value = data.get(primary_key)
     return value if value not in (None, "") else data.get(fallback_key)
 
-def get_rates1(shares):
+def get_rates(shares, rates_file):
     oldest, newest = get_oldes_and_newest_dates(shares)
     oldest = oldest - relativedelta(months=1)
     newest = newest + relativedelta(months=1)
-    return get_rates(oldest, newest)
+    return get_rates_range(oldest, newest, rates_file)
 
-def get_rates(from_date, to_date):
+def get_rates_range(from_date, to_date, rates_file):
     try:
-        if os.path.exists("rates.json"):
-            with open("rates.json", 'r', encoding='utf-8') as file:
+        if os.path.exists(rates_file):
+            with open(rates_file, 'r', encoding='utf-8') as file:
                 data = json.load(file)
             return data
         else:
@@ -107,7 +111,7 @@ def get_rates(from_date, to_date):
             response = requests.get(url)
             response.raise_for_status()
             data = response.json()
-            with open("rates.json", "w") as file:
+            with open(rates_file, "w") as file:
                 json.dump(data, file, indent=4) 
             return data
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
@@ -208,11 +212,14 @@ def get_transactions(file_path):
 
 if __name__ == "__main__":
     # Set up the argument parser
-    parser = argparse.ArgumentParser(description="Fetch and parse \
-    JSON data from a URL or a file.")
+    parser = argparse.ArgumentParser(description=("Parse a Schwab JSON transaction file and calculate the total Tax (SEK) for the shares sold.\n"
+                                    "Exchange rates are fetched from Riksbanken for the interval given by the transaction JSON data.\n\n"
+                                    "To get a transaction statement file, go to the Schwab page under 'transaction history' and after choosing an "
+                                    "interval export the file as JSON.\n\n"
+                                    "schwab_parser.py --file <transaction_statement>.json"),
+                                     formatter_class=argparse.RawTextHelpFormatter)
 
-    parser.add_argument("--url", help="The URL to fetch JSON data from.")
-    parser.add_argument("--file", help="The file path to read JSON data from.")
+    parser.add_argument("--file", help="The file path containing JSON transaction data.")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose mode")
     # Parse the arguments
     args = parser.parse_args()
@@ -226,24 +233,15 @@ if __name__ == "__main__":
     # Get sold shares
     sold_shares = get_sold_shares(transactions)
 
+    # The rates file
+    file_name, file_extension = os.path.splitext(args.file)
+    rates_file = f"{file_name}_rates{file_extension}"
+
     # Get exchange rates within the dates of sold shares
-    rates = get_rates1(sold_shares)
+    rates = get_rates(sold_shares, rates_file)
 
     # Update the shares with the correct exchange rate
     sold_shares = update_shares(sold_shares, rates)
 
     # Print
     print_table(sold_shares)
-    # Calculate profit or losses, and eventual taxes
-    # Total sale amount minus total purchase amount.
-    # And 30% taxes on eventual profit.
-    # calculate_and_print_totals(sold_shares)
-
-    # Handle file argument
-    # if args.file:
-    #    parse_json_from_file(args.file)
-
-    # If neither is provided, print help
-    
-    if not args.url and not args.file:
-        parser.print_help()
