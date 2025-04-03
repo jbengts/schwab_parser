@@ -46,21 +46,37 @@ def sprint(*args, **kwargs):
     if Config.verbose:
         print(*args, **kwargs)
 
+def print_table_section_summary(quantity, buy, sell, result):
+    print("")
+    print(f"{'':<22}{quantity:<10.2f}"
+          f"{'':<122.2}{sell:<14.2f}{buy:<14.2f}{result:<14.2f}")
+    print("-" * 195)
+    
 def print_table(shares):
     print(f"{'Sell Date':<12}{'Type':<10}{'Quantity':<10}{'Sell Price':<12}"
           f"{'Sell Rate':<12}{'Sell Rate Date':<25}{'Buy Date':<12}"
           f"{'Buy Price':<12}{'Buy Rate':<12}{'Buy Rate Date':<25}"
-          f"{'ESPP Gain':<12}{'Profit (SEK)':<14}{'Tax (SEK)':<12}")
-    print("-" * 180)
+          f"{'ESPP Gain':<12}{'Sell (SEK)':<14}{'Buy (SEK)':<14}{'Result (SEK)':<14}")
+    print("-" * 195)
+    
+    total_result = 0.0
 
-    total_tax = 0.0
-    total_profit = 0.0
+    total_quantity = 0.0
+    total_buy = 0.0
+    total_sell = 0.0
+    total_diff = 0.0
+            
     prev_sell_date = None
     for share in shares:
         sell_date = share.sell_date.strftime('%Y-%m-%d')
         buy_date = share.buy_date.strftime('%Y-%m-%d')
         if prev_sell_date is not None and prev_sell_date != sell_date:
-            print("-" * 180)
+            print_table_section_summary(total_quantity, total_buy,
+                                        total_sell, total_diff)
+            total_quantity = 0.0
+            total_buy = 0.0
+            total_sell = 0.0
+            total_diff = 0.0            
         if share.sell_date_low == share.sell_date_high:
             sell_rate_date = share.sell_date_low.strftime('%Y-%m-%d')
         else:
@@ -73,20 +89,33 @@ def print_table(shares):
             espp_gain = (share.buy_price - share.espp_discount_price) * share.sell_quantity * share.sell_rate
         else:
             espp_gain = 0.0
-        profit = (share.sell_rate * share.sell_price - share.buy_rate * share.buy_price) * share.sell_quantity
-        tax = profit * 0.3
-        total_tax += tax
-        total_profit += profit
+
+        quantity = share.sell_quantity
+        buy = (share.buy_rate * share.buy_price) * share.sell_quantity
+        sell = (share.sell_rate * share.sell_price) * share.sell_quantity
+        diff = sell - buy
+
+        total_quantity += quantity
+        total_buy += buy
+        total_sell += sell
+        total_diff += diff
+        total_result += diff
+ 
         prev_sell_date = sell_date
         print(f"{sell_date:<12}{share.share_type:<10}"
               f"{share.sell_quantity:<10.2f}{share.sell_price:<12.2f}"
               f"{share.sell_rate:<12.2f}{sell_rate_date:<25}{buy_date:<12}"
               f"{share.buy_price:<12.2f}{share.buy_rate:<12.2f}"
-              f"{buy_rate_date:<25}{espp_gain:<12.2f}{profit:<14.2f}"
-              f"{tax:<12.2f}")
-    print("-" * 180)
-    print(f"Total profit (SEK): {total_profit:.2f}")
-    print(f"Total tax (SEK):    {total_tax:.2f}")
+              f"{buy_rate_date:<25}{espp_gain:<12.2f}"
+              f"{sell:<14.2f}{buy:<14.2f}{diff:<14.2f}")
+    if total_result > 0.0:
+        tax = total_result * 0.3
+    else:
+        tax = 0.0
+    print_table_section_summary(total_quantity, total_buy,
+                                total_sell, total_diff)
+    print(f"Total result (SEK): {total_result:.2f}")
+    print(f"Total tax    (SEK): {tax:.2f}")
 
 def get_valid_value(data, primary_key, fallback_key):
     value = data.get(primary_key)
