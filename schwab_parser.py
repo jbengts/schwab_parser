@@ -60,6 +60,9 @@ def print_table(shares):
     print("-" * 195)
     
     total_result = 0.0
+    res_total_sell = 0.0
+    res_total_buy = 0.0
+    res_total_quantity = 0.0
 
     total_quantity = 0.0
     total_buy = 0.0
@@ -73,6 +76,9 @@ def print_table(shares):
         if prev_sell_date is not None and prev_sell_date != sell_date:
             print_table_section_summary(total_quantity, total_buy,
                                         total_sell, total_diff)
+            res_total_sell += total_sell
+            res_total_buy += total_buy
+            res_total_quantity += total_quantity
             total_quantity = 0.0
             total_buy = 0.0
             total_sell = 0.0
@@ -100,7 +106,7 @@ def print_table(shares):
         total_sell += sell
         total_diff += diff
         total_result += diff
- 
+
         prev_sell_date = sell_date
         print(f"{sell_date:<12}{share.share_type:<10}"
               f"{share.sell_quantity:<10.2f}{share.sell_price:<12.2f}"
@@ -114,6 +120,12 @@ def print_table(shares):
         tax = 0.0
     print_table_section_summary(total_quantity, total_buy,
                                 total_sell, total_diff)
+    res_total_sell += total_sell
+    res_total_buy += total_buy
+    res_total_quantity += total_quantity
+    print(f"Total quantity: {res_total_quantity:.2f}")
+    print(f"Total buy (SEK): {res_total_buy:.2f}")
+    print(f"Total sell (SEK): {res_total_sell:.2f}")
     print(f"Total result (SEK): {total_result:.2f}")
     print(f"Total tax    (SEK): {tax:.2f}")
 
@@ -246,7 +258,7 @@ if __name__ == "__main__":
                                     "To get a transaction statement file, go to the Schwab page under 'transaction history' and after choosing an "
                                     "interval export the file as JSON.\n\n"
                                     "schwab_parser.py --file <transaction_statement>.json"),
-                                     formatter_class=argparse.RawTextHelpFormatter)
+                                    formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument("--file", help="The file path containing JSON transaction data.")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose mode")
